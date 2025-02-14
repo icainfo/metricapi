@@ -1,5 +1,5 @@
-# main.py
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from functions import HelpScoutHelper  # Adjust the import paths if needed
 from api_client import HelpScoutAPIClient
 
@@ -8,6 +8,15 @@ app = FastAPI(title="HelpScout Metrics API")
 # Initialize your API client and helper once at startup.
 client = HelpScoutAPIClient()
 helper = HelpScoutHelper(client)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (for production, you might want to specify only your frontend URL here)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
 
 @app.get("/metrics/closed-tickets")
 async def closed_tickets():
@@ -144,16 +153,15 @@ async def report_method():
         return {"report_methods": methods}
     except Exception as e:
         return {"error": str(e)}
-    
+
 @app.get("/metrics/tickets-by-report-method")
-async def tickets_by_department():
+async def tickets_by_report_method():
     """
     Returns a breakdown (count) of tickets by report method.
     """
     try:
         tickets = helper.get_all_tickets()
         custom_fields = helper.extract_custom_fields(tickets)
-        # Build count per department
         report_counts = {}
         for ticket in custom_fields:
             rm = ticket.get("Report Method")
@@ -175,16 +183,15 @@ async def service_type():
         return {"service_types": service_types}
     except Exception as e:
         return {"error": str(e)}
-    
+
 @app.get("/metrics/tickets-by-service-type")
-async def tickets_by_department():
+async def tickets_by_service_type():
     """
-    Returns a breakdown (count) of tickets by department.
+    Returns a breakdown (count) of tickets by service type.
     """
     try:
         tickets = helper.get_all_tickets()
         custom_fields = helper.extract_custom_fields(tickets)
-        # Build count per department
         st_counts = {}
         for ticket in custom_fields:
             st = ticket.get("Service Type")
@@ -206,9 +213,9 @@ async def category():
         return {"categories": categories}
     except Exception as e:
         return {"error": str(e)}
-    
+
 @app.get("/metrics/tickets-by-category")
-async def tickets_by_department():
+async def tickets_by_category():
     """
     Returns a breakdown (count) of tickets by category.
     """
