@@ -2,12 +2,14 @@ import os
 import requests
 import toml
 
+# Try to load configuration from config.toml if available.
 try:
     config_data = toml.load("./config.toml")
 except Exception:
     config_data = {}
 
 def get_config_value(key):
+    # Environment variable names are uppercase.
     return os.getenv(key.upper()) or config_data.get("keys", {}).get(key)
 
 class HelpScoutAPIClient:
