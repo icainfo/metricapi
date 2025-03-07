@@ -15,8 +15,8 @@ def get_config_value(key):
 class HelpScoutAPIClient:
     def __init__(self):
         self.hs_url = "https://api.helpscout.net/v2"
-        self.id = get_config_value("id")
-        self.secret = get_config_value("secret")
+        self.id = get_config_value("CLIENT_ID")
+        self.secret = get_config_value("CLIENT_SECRET")
         if not self.id or not self.secret:
             raise ValueError("API keys not found. Set environment variables or update config.toml.")
         self.token = self.get_access_token()
