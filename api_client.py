@@ -37,16 +37,12 @@ class HelpScoutAPIClient:
         response.raise_for_status()
         return response.json()['access_token']
 
-# api_client.py
     def get(self, endpoint, params=None):
         url = f"{self.hs_url}/{endpoint}"
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=10)  # Add timeout
+            response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.Timeout:
-            print(f"Timeout occurred while fetching {endpoint}")
-            return None
         except requests.exceptions.RequestException as e:
             print(f"Error: {e}")
             return None

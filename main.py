@@ -185,15 +185,6 @@ async def tickets_by_category(api_key: str = Depends(verify_api_key)):
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
     return {"tickets_by_category": cat_counts}
 
-# main.py
-@app.get("/warmup")
-async def warmup_cache():
-    try:
-        await run_in_threadpool(refresh_cache)
-        return {"status": "Cache warmed up"}
-    except Exception as e:
-        return {"error": str(e)}
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
