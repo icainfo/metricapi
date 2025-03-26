@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from functions import HelpScoutHelper  # Adjust import paths if needed
 from api_client import HelpScoutAPIClient
-import json
 
 app = FastAPI(title="HelpScout Metrics API")
 
@@ -113,17 +112,7 @@ async def tickets_by_department(api_key: str = Depends(verify_api_key)):
     for ticket in custom_fields:
         dept = ticket.get("Department")
         if dept:
-            # Clean department names
-            clean_dept = dept.strip().replace('\x00', '')  # Remove null bytes
-            dept_counts[clean_dept] = dept_counts.get(clean_dept, 0) + 1
-    
-    # Validate JSON serialization
-    try:
-        test_json = json.dumps({"tickets_by_department": dept_counts})
-    except Exception as e:
-        print(f"JSON serialization error: {e}")
-        raise HTTPException(status_code=500, detail="Data formatting error")
-    
+            dept_counts[dept] = dept_counts.get(dept, 0) + 1
     return {"tickets_by_department": dept_counts}
 
 @app.get("/metrics/departments")
