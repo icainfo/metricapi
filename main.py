@@ -122,6 +122,47 @@ async def custom_fields(api_key: str = Depends(verify_api_key)):
     custom_fields_data = ticket_cache.get("custom_fields", [])
     return {"custom_fields": custom_fields_data}
 
+@app.get("/metrics/tickets-by-service-type")
+async def tickets_by_service_type(api_key: str = Depends(verify_api_key)):
+    custom_fields = ticket_cache.get("custom_fields", [])
+    service_type_counts = {}
+    for ticket in custom_fields:
+        service_type = ticket.get("Service Type")
+        if service_type:
+            service_type_counts[service_type] = service_type_counts.get(service_type, 0) + 1
+    return {"tickets_by_service_type": service_type_counts}
+
+@app.get("/metrics/tickets-by-category")
+async def tickets_by_category(api_key: str = Depends(verify_api_key)):
+    custom_fields = ticket_cache.get("custom_fields", [])
+    category_counts = {}
+    for ticket in custom_fields:
+        category = ticket.get("Category")
+        if category:
+            category_counts[category] = category_counts.get(category, 0) + 1
+    return {"tickets_by_category": category_counts}
+
+@app.get("/metrics/tickets-by-department")
+async def tickets_by_department(api_key: str = Depends(verify_api_key)):
+    custom_fields = ticket_cache.get("custom_fields", [])
+    department_counts = {}
+    for ticket in custom_fields:
+        department = ticket.get("Department")
+        if department:
+            department_counts[department] = department_counts.get(department, 0) + 1
+    return {"tickets_by_department": department_counts}
+
+@app.get("/metrics/tickets-by-location")
+async def tickets_by_location(api_key: str = Depends(verify_api_key)):
+    custom_fields = ticket_cache.get("custom_fields", [])
+    location_counts = {}
+    for ticket in custom_fields:
+        location = ticket.get("Location")
+        if location:
+            location_counts[location] = location_counts.get(location, 0) + 1
+    return {"tickets_by_location": location_counts}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
