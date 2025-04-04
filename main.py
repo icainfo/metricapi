@@ -2,7 +2,7 @@ import os
 import time
 import asyncio
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Header, HTTPException, Depends, Query
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from api_client import HelpScoutAPIClient
@@ -70,7 +70,7 @@ def refresh_cache():
                 durations[ticket["id"]] = duration
 
         def extract_fields(ticket):
-            fields = {"ticket_id": ticket.get("id"), "createdAt": ticket.get("createdAt")}
+            fields = {"ticket_id": ticket.get("id")}
             for field in ticket.get("customFields", []):
                 fields[field.get("name")] = field.get("text")
             return fields
@@ -101,35 +101,13 @@ async def startup_event():
     await run_in_threadpool(refresh_cache)
     asyncio.create_task(background_cache_updater())
 
-def get_cutoff(range: str):
-    now = datetime.utcnow()
-    if range == "1m":
-        return now - timedelta(days=30)
-    elif range == "3m":
-        return now - timedelta(days=90)
-    elif range == "12m":
-        return now - timedelta(days=365)
-    elif range == "ytd":
-        return datetime(now.year, 1, 1)
-    return None
-
 @app.get("/metrics/average-ticket-duration")
-async def average_ticket_duration(api_key: str = Depends(verify_api_key), range: str = Query("all")):
-    cutoff = get_cutoff(range)
-    durations = []
-    for ticket_id, duration in ticket_cache.get("ticket_durations", {}).items():
-        ticket = next((t for t in ticket_cache["closed_tickets"] if t["id"] == ticket_id), None)
-        if ticket:
-            closed_at = ticket.get("closedAt")
-            if closed_at:
-                closed_dt = datetime.fromisoformat(closed_at.replace("Z", "+00:00"))
-                if cutoff and closed_dt < cutoff:
-                    continue
-                durations.append(duration)
-
+async def average_ticket_duration(api_key: str = Depends(verify_api_key)):
+    durations = list(ticket_cache.get("ticket_durations", {}).values())
     if not durations:
         return {"average_ticket_duration": 0}
 
+    # Remove outliers using interquartile range (IQR) method
     durations.sort()
     q1 = durations[int(len(durations) * 0.25)]
     q3 = durations[int(len(durations) * 0.75)]
@@ -141,65 +119,46 @@ async def average_ticket_duration(api_key: str = Depends(verify_api_key), range:
     avg = sum(filtered) / len(filtered) if filtered else 0
     return {"average_ticket_duration": avg}
 
-
-def filter_custom_fields_by_date(custom_fields, range):
-    cutoff = get_cutoff(range)
-    if not cutoff:
-        return custom_fields
-    filtered = []
-    for item in custom_fields:
-        created_at = item.get("createdAt")
-        if created_at:
-            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            if created_dt >= cutoff:
-                filtered.append(item)
-    return filtered
-
 @app.get("/metrics/tickets-by-category")
-async def tickets_by_category(api_key: str = Depends(verify_api_key), range: str = Query("all")):
+async def tickets_by_category(api_key: str = Depends(verify_api_key)):
     result = {}
-    filtered = filter_custom_fields_by_date(ticket_cache["custom_fields"], range)
-    for item in filtered:
+    for item in ticket_cache["custom_fields"]:
         key = item.get("Category")
         if key:
             result[key] = result.get(key, 0) + 1
     return {"tickets_by_category": result}
 
 @app.get("/metrics/tickets-by-report-method")
-async def tickets_by_report_method(api_key: str = Depends(verify_api_key), range: str = Query("all")):
+async def tickets_by_report_method(api_key: str = Depends(verify_api_key)):
     result = {}
-    filtered = filter_custom_fields_by_date(ticket_cache["custom_fields"], range)
-    for item in filtered:
+    for item in ticket_cache["custom_fields"]:
         key = item.get("Report Method")
         if key:
             result[key] = result.get(key, 0) + 1
     return {"tickets_by_report_method": result}
 
 @app.get("/metrics/tickets-by-service-type")
-async def tickets_by_service_type(api_key: str = Depends(verify_api_key), range: str = Query("all")):
+async def tickets_by_service_type(api_key: str = Depends(verify_api_key)):
     result = {}
-    filtered = filter_custom_fields_by_date(ticket_cache["custom_fields"], range)
-    for item in filtered:
+    for item in ticket_cache["custom_fields"]:
         key = item.get("Service Type")
         if key:
             result[key] = result.get(key, 0) + 1
     return {"tickets_by_service_type": result}
 
 @app.get("/metrics/tickets-by-location")
-async def tickets_by_location(api_key: str = Depends(verify_api_key), range: str = Query("all")):
+async def tickets_by_location(api_key: str = Depends(verify_api_key)):
     result = {}
-    filtered = filter_custom_fields_by_date(ticket_cache["custom_fields"], range)
-    for item in filtered:
+    for item in ticket_cache["custom_fields"]:
         key = item.get("Location")
         if key:
             result[key] = result.get(key, 0) + 1
     return {"tickets_by_location": result}
 
 @app.get("/metrics/tickets-by-department")
-async def tickets_by_department(api_key: str = Depends(verify_api_key), range: str = Query("all")):
+async def tickets_by_department(api_key: str = Depends(verify_api_key)):
     result = {}
-    filtered = filter_custom_fields_by_date(ticket_cache["custom_fields"], range)
-    for item in filtered:
+    for item in ticket_cache["custom_fields"]:
         key = item.get("Department")
         if key:
             result[key] = result.get(key, 0) + 1
