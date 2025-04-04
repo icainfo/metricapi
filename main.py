@@ -107,10 +107,14 @@ async def average_ticket_duration(api_key: str = Depends(verify_api_key)):
     if not durations:
         return {"average_ticket_duration": 0}
 
-    # Remove top 5% extreme durations
+    # Remove outliers using interquartile range (IQR) method
     durations.sort()
-    cutoff = int(len(durations) * 0.95)
-    filtered = durations[:cutoff] if cutoff > 0 else durations
+    q1 = durations[int(len(durations) * 0.25)]
+    q3 = durations[int(len(durations) * 0.75)]
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    filtered = [d for d in durations if lower_bound <= d <= upper_bound]
 
     avg = sum(filtered) / len(filtered) if filtered else 0
     return {"average_ticket_duration": avg}
