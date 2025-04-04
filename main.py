@@ -49,7 +49,7 @@ def fetch_all_conversations(status):
         if "next" not in resp.get("_links", {}):
             break
         page += 1
-        time.sleep(0.25)  # reduced sleep for faster load
+        time.sleep(0.25)
     return all_convos
 
 def refresh_cache():
@@ -85,7 +85,8 @@ def refresh_cache():
             "last_updated": datetime.utcnow()
         })
 
-        print(f"✅ Cache refreshed at {ticket_cache['last_updated']} with {len(all_tickets)} total tickets")
+        print(f"✅ Cache refreshed at {ticket_cache['last_updated']}")
+        print(f"✅ Custom Fields: {custom_fields[:3]}")
 
     except Exception as e:
         print(f"❌ Error refreshing cache: {e}")
@@ -102,10 +103,16 @@ async def startup_event():
 
 @app.get("/metrics/average-ticket-duration")
 async def average_ticket_duration(api_key: str = Depends(verify_api_key)):
-    durations = ticket_cache.get("ticket_durations", {})
+    durations = list(ticket_cache.get("ticket_durations", {}).values())
     if not durations:
         return {"average_ticket_duration": 0}
-    avg = sum(durations.values()) / len(durations)
+
+    # Remove top 5% extreme durations
+    durations.sort()
+    cutoff = int(len(durations) * 0.95)
+    filtered = durations[:cutoff] if cutoff > 0 else durations
+
+    avg = sum(filtered) / len(filtered) if filtered else 0
     return {"average_ticket_duration": avg}
 
 @app.get("/metrics/tickets-by-category")
