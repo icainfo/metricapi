@@ -1,11 +1,23 @@
 import os
-import asyncio
+import time
+import requests
+import toml
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from functions import HelpScoutHelper  # Adjust import paths if needed
 from api_client import HelpScoutAPIClient
+
+# Try to load configuration from config.toml if available.
+try:
+    config_data = toml.load("./config.toml")
+except Exception:
+    config_data = {}
+
+def get_config_value(key):
+    # Environment variable names are uppercase.
+    return os.getenv(key.upper()) or config_data.get("keys", {}).get(key)
 
 app = FastAPI(title="HelpScout Metrics API")
 
@@ -44,21 +56,29 @@ async def verify_api_key(x_api_key: str = Header(...)):
 def refresh_cache():
     """Refresh the global cache by fetching data from HelpScout."""
     global ticket_cache
-    # Fetch all and closed tickets.
-    all_tickets = helper.get_all_tickets()
-    closed_tickets = helper.get_closed_tickets()
-    # Compute ticket durations (for closed tickets).
-    ticket_durations = helper.get_tickets_duration_times()
-    # Extract custom fields from all tickets.
-    custom_fields = helper.extract_custom_fields(all_tickets)
-    ticket_cache.update({
-        "all_tickets": all_tickets,
-        "closed_tickets": closed_tickets,
-        "ticket_durations": ticket_durations,
-        "custom_fields": custom_fields,
-        "last_updated": datetime.utcnow()
-    })
-    print(f"Cache refreshed at {ticket_cache['last_updated']}")
+    try:
+        # Fetch all and closed tickets
+        all_tickets = helper.get_all_tickets()
+        closed_tickets = helper.get_closed_tickets()
+
+        # Compute ticket durations (for closed tickets)
+        ticket_durations = helper.get_tickets_duration_times()
+
+        # Extract custom fields from all tickets
+        custom_fields = helper.extract_custom_fields(all_tickets)
+
+        # Update cache with fetched data
+        ticket_cache.update({
+            "all_tickets": all_tickets,
+            "closed_tickets": closed_tickets,
+            "ticket_durations": ticket_durations,
+            "custom_fields": custom_fields,
+            "last_updated": datetime.utcnow()
+        })
+        print(f"Cache refreshed at {ticket_cache['last_updated']}")
+
+    except Exception as e:
+        print(f"Error refreshing cache: {e}")
 
 async def background_cache_updater():
     """Background task to update cache periodically."""
@@ -151,6 +171,8 @@ async def tickets_by_report_method(api_key: str = Depends(verify_api_key)):
         rm = ticket.get("Report Method")
         if rm:
             report_counts[rm] = report_counts.get(rm, 0) + 1
+        else:
+            print(f"Missing Report Method in ticket: {ticket}")
     return {"tickets_by_report_method": report_counts}
 
 @app.get("/metrics/service-type")
