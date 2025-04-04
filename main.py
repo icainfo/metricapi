@@ -49,7 +49,7 @@ def fetch_all_conversations(status):
         if "next" not in resp.get("_links", {}):
             break
         page += 1
-        time.sleep(0.5)
+        time.sleep(0.25)  # reduced sleep for faster load
     return all_convos
 
 def refresh_cache():
@@ -85,8 +85,7 @@ def refresh_cache():
             "last_updated": datetime.utcnow()
         })
 
-        print(f"✅ Cache refreshed at {ticket_cache['last_updated']}")
-        print(f"✅ Custom Fields: {custom_fields[:3]}")
+        print(f"✅ Cache refreshed at {ticket_cache['last_updated']} with {len(all_tickets)} total tickets")
 
     except Exception as e:
         print(f"❌ Error refreshing cache: {e}")
