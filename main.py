@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from api_client import HelpScoutAPIClient
 
-app = FastAPI(title="HelpScout Metrics API")
+app = FastAPI(title="ICA IT Metrics API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Cache to store ticket and metric data
 ticket_cache = {
     "all_tickets": [],
     "closed_tickets": [],
@@ -26,7 +27,6 @@ ticket_cache = {
 }
 
 CACHE_DURATION = timedelta(minutes=10)
-
 client = HelpScoutAPIClient()
 
 async def verify_api_key(x_api_key: str = Header(...)):
@@ -37,16 +37,28 @@ async def verify_api_key(x_api_key: str = Header(...)):
         raise HTTPException(status_code=403, detail="Unauthorized")
     return x_api_key
 
+def fetch_all_conversations(status):
+    all_convos = []
+    page = 1
+    while True:
+        resp = client.get("conversations", params={"status": status, "page": page})
+        if not resp:
+            break
+        convos = resp.get("_embedded", {}).get("conversations", [])
+        all_convos.extend(convos)
+        if "next" not in resp.get("_links", {}):
+            break
+        page += 1
+        time.sleep(0.5)
+    return all_convos
+
 def refresh_cache():
     global ticket_cache
     try:
-        all_resp = client.get("conversations", params={"status": "all"})
-        closed_resp = client.get("conversations", params={"status": "closed"})
+        all_tickets = fetch_all_conversations("all")
+        closed_tickets = fetch_all_conversations("closed")
 
-        all_tickets = all_resp.get("_embedded", {}).get("conversations", [])
-        closed_tickets = closed_resp.get("_embedded", {}).get("conversations", [])
-
-        ticket_durations = {}
+        durations = {}
         for ticket in closed_tickets:
             created = ticket.get("createdAt")
             closed = ticket.get("closedAt")
@@ -55,36 +67,33 @@ def refresh_cache():
                     datetime.fromisoformat(closed.replace("Z", "+00:00")) -
                     datetime.fromisoformat(created.replace("Z", "+00:00"))
                 ).total_seconds()
-                ticket_durations[ticket["id"]] = duration
+                durations[ticket["id"]] = duration
 
         def extract_fields(ticket):
-            fields = {"ticket_id": ticket["id"]}
+            fields = {"ticket_id": ticket.get("id")}
             for field in ticket.get("customFields", []):
-                fields[field["name"]] = field.get("text")
+                fields[field.get("name")] = field.get("text")
             return fields
 
-        custom_fields = [extract_fields(ticket) for ticket in all_tickets]
+        custom_fields = [extract_fields(ticket) for ticket in all_tickets if ticket.get("customFields")]
 
         ticket_cache.update({
             "all_tickets": all_tickets,
             "closed_tickets": closed_tickets,
-            "ticket_durations": ticket_durations,
+            "ticket_durations": durations,
             "custom_fields": custom_fields,
             "last_updated": datetime.utcnow()
         })
 
-        print(f"\u2705 Cache refreshed at {ticket_cache['last_updated']}")
-        print(f"\u2705 Sample custom fields: {custom_fields[:3]}")
+        print(f"✅ Cache refreshed at {ticket_cache['last_updated']}")
+        print(f"✅ Custom Fields: {custom_fields[:3]}")
 
     except Exception as e:
-        print(f"\u274C Error refreshing cache: {e}")
+        print(f"❌ Error refreshing cache: {e}")
 
 async def background_cache_updater():
     while True:
-        try:
-            await run_in_threadpool(refresh_cache)
-        except Exception as e:
-            print(f"\u274C Error refreshing cache: {e}")
+        await run_in_threadpool(refresh_cache)
         await asyncio.sleep(CACHE_DURATION.total_seconds())
 
 @app.on_event("startup")
@@ -102,53 +111,48 @@ async def average_ticket_duration(api_key: str = Depends(verify_api_key)):
 
 @app.get("/metrics/tickets-by-category")
 async def tickets_by_category(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    cat_counts = {}
-    for ticket in custom_fields:
-        cat = ticket.get("Category")
-        if cat:
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
-    return {"tickets_by_category": cat_counts}
+    result = {}
+    for item in ticket_cache["custom_fields"]:
+        key = item.get("Category")
+        if key:
+            result[key] = result.get(key, 0) + 1
+    return {"tickets_by_category": result}
 
 @app.get("/metrics/tickets-by-report-method")
 async def tickets_by_report_method(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    method_counts = {}
-    for ticket in custom_fields:
-        method = ticket.get("Report Method")
-        if method:
-            method_counts[method] = method_counts.get(method, 0) + 1
-    return {"tickets_by_report_method": method_counts}
+    result = {}
+    for item in ticket_cache["custom_fields"]:
+        key = item.get("Report Method")
+        if key:
+            result[key] = result.get(key, 0) + 1
+    return {"tickets_by_report_method": result}
 
 @app.get("/metrics/tickets-by-service-type")
 async def tickets_by_service_type(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    service_counts = {}
-    for ticket in custom_fields:
-        svc = ticket.get("Service Type")
-        if svc:
-            service_counts[svc] = service_counts.get(svc, 0) + 1
-    return {"tickets_by_service_type": service_counts}
+    result = {}
+    for item in ticket_cache["custom_fields"]:
+        key = item.get("Service Type")
+        if key:
+            result[key] = result.get(key, 0) + 1
+    return {"tickets_by_service_type": result}
 
 @app.get("/metrics/tickets-by-location")
 async def tickets_by_location(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    loc_counts = {}
-    for ticket in custom_fields:
-        loc = ticket.get("Location")
-        if loc:
-            loc_counts[loc] = loc_counts.get(loc, 0) + 1
-    return {"tickets_by_location": loc_counts}
+    result = {}
+    for item in ticket_cache["custom_fields"]:
+        key = item.get("Location")
+        if key:
+            result[key] = result.get(key, 0) + 1
+    return {"tickets_by_location": result}
 
 @app.get("/metrics/tickets-by-department")
 async def tickets_by_department(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    dept_counts = {}
-    for ticket in custom_fields:
-        dept = ticket.get("Department")
-        if dept:
-            dept_counts[dept] = dept_counts.get(dept, 0) + 1
-    return {"tickets_by_department": dept_counts}
+    result = {}
+    for item in ticket_cache["custom_fields"]:
+        key = item.get("Department")
+        if key:
+            result[key] = result.get(key, 0) + 1
+    return {"tickets_by_department": result}
 
 if __name__ == "__main__":
     import uvicorn
