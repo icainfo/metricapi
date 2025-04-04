@@ -1,12 +1,11 @@
 import os
 import time
-import requests
-import toml
 import asyncio
-from datetime import datetime, timedelta
+import requests
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
+from datetime import datetime, timedelta
 from functions import HelpScoutHelper  # Adjust import paths if needed
 from api_client import HelpScoutAPIClient
 
@@ -17,7 +16,6 @@ except Exception:
     config_data = {}
 
 def get_config_value(key):
-    # Environment variable names are uppercase.
     return os.getenv(key.upper()) or config_data.get("keys", {}).get(key)
 
 app = FastAPI(title="HelpScout Metrics API")
@@ -31,7 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global in-memory cache for ticket data
 ticket_cache = {
     "all_tickets": [],
     "closed_tickets": [],
@@ -39,9 +36,9 @@ ticket_cache = {
     "custom_fields": [],
     "last_updated": None
 }
+
 CACHE_DURATION = timedelta(minutes=10)
 
-# Initialize API client and helper once at startup.
 client = HelpScoutAPIClient()
 helper = HelpScoutHelper(client)
 
@@ -58,17 +55,11 @@ def refresh_cache():
     """Refresh the global cache by fetching data from HelpScout."""
     global ticket_cache
     try:
-        # Fetch all and closed tickets
         all_tickets = helper.get_all_tickets()
         closed_tickets = helper.get_closed_tickets()
-
-        # Compute ticket durations (for closed tickets)
         ticket_durations = helper.get_tickets_duration_times()
-
-        # Extract custom fields from all tickets
         custom_fields = helper.extract_custom_fields(all_tickets)
 
-        # Update cache with fetched data
         ticket_cache.update({
             "all_tickets": all_tickets,
             "closed_tickets": closed_tickets,
@@ -77,7 +68,7 @@ def refresh_cache():
             "last_updated": datetime.utcnow()
         })
         print(f"Cache refreshed at {ticket_cache['last_updated']}")
-
+        print("Cached Custom Fields:", custom_fields)
     except Exception as e:
         print(f"Error refreshing cache: {e}")
 
@@ -92,11 +83,9 @@ async def background_cache_updater():
 
 @app.on_event("startup")
 async def startup_event():
-    # Eagerly refresh the cache on startup and start the periodic updater.
     await run_in_threadpool(refresh_cache)
     asyncio.create_task(background_cache_updater())
 
-# For each endpoint, the API key dependency is enforced.
 @app.get("/metrics/closed-tickets")
 async def closed_tickets(api_key: str = Depends(verify_api_key)):
     tickets = ticket_cache.get("closed_tickets", [])
@@ -116,54 +105,6 @@ async def average_ticket_duration(api_key: str = Depends(verify_api_key)):
     avg_duration = sum(filtered.values()) / len(filtered) if filtered else 0
     return {"average_ticket_duration": avg_duration}
 
-@app.get("/metrics/tickets-duration-times")
-async def tickets_duration_times(api_key: str = Depends(verify_api_key)):
-    durations = ticket_cache.get("ticket_durations", {})
-    return {"ticket_durations": durations}
-
-@app.get("/metrics/custom-fields")
-async def custom_fields(api_key: str = Depends(verify_api_key)):
-    custom_fields_data = ticket_cache.get("custom_fields", [])
-    return {"custom_fields": custom_fields_data}
-
-@app.get("/metrics/tickets-by-department")
-async def tickets_by_department(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    dept_counts = {}
-    for ticket in custom_fields:
-        dept = ticket.get("Department")
-        if dept:
-            dept_counts[dept] = dept_counts.get(dept, 0) + 1
-    return {"tickets_by_department": dept_counts}
-
-@app.get("/metrics/departments")
-async def departments(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    depts = [ticket.get('Department') for ticket in custom_fields if 'Department' in ticket]
-    return {"departments": depts}
-
-@app.get("/metrics/tickets-by-location")
-async def tickets_by_location(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    location_counts = {}
-    for ticket in custom_fields:
-        loc = ticket.get("Location")
-        if loc:
-            location_counts[loc] = location_counts.get(loc, 0) + 1
-    return {"tickets_by_location": location_counts}
-
-@app.get("/metrics/locations")
-async def locations(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    locs = [ticket.get('Location') for ticket in custom_fields if 'Location' in ticket]
-    return {"locations": locs}
-
-@app.get("/metrics/report-method")
-async def report_method(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    methods = [ticket.get('Report Method') for ticket in custom_fields if 'Report Method' in ticket]
-    return {"report_methods": methods}
-
 @app.get("/metrics/tickets-by-report-method")
 async def tickets_by_report_method(api_key: str = Depends(verify_api_key)):
     custom_fields = ticket_cache.get("custom_fields", [])
@@ -176,37 +117,10 @@ async def tickets_by_report_method(api_key: str = Depends(verify_api_key)):
             print(f"Missing Report Method in ticket: {ticket}")
     return {"tickets_by_report_method": report_counts}
 
-@app.get("/metrics/service-type")
-async def service_type(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    service_types = [ticket.get('Service Type') for ticket in custom_fields if 'Service Type' in ticket]
-    return {"service_types": service_types}
-
-@app.get("/metrics/tickets-by-service-type")
-async def tickets_by_service_type(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    st_counts = {}
-    for ticket in custom_fields:
-        st = ticket.get("Service Type")
-        if st:
-            st_counts[st] = st_counts.get(st, 0) + 1
-    return {"tickets_by_service_type": st_counts}
-
-@app.get("/metrics/category")
-async def category(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    categories = [ticket.get('Category') for ticket in custom_fields if 'Category' in ticket]
-    return {"categories": categories}
-
-@app.get("/metrics/tickets-by-category")
-async def tickets_by_category(api_key: str = Depends(verify_api_key)):
-    custom_fields = ticket_cache.get("custom_fields", [])
-    cat_counts = {}
-    for ticket in custom_fields:
-        cat = ticket.get("Category")
-        if cat:
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
-    return {"tickets_by_category": cat_counts}
+@app.get("/metrics/custom-fields")
+async def custom_fields(api_key: str = Depends(verify_api_key)):
+    custom_fields_data = ticket_cache.get("custom_fields", [])
+    return {"custom_fields": custom_fields_data}
 
 if __name__ == "__main__":
     import uvicorn
